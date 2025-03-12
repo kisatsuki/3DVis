@@ -400,11 +400,11 @@ class Viewport3D(QWidget):
     def view_mouse_press_event(self, event):
         """Обработчик нажатия мыши для GLViewWidget"""
         # Сохраняем начальную позицию для определения перетаскивания
-        self.mouse_press_pos = event.pos()
+        self.mouse_press_pos = event.position().toPoint()
         self.is_dragging = False
 
         # Сохраняем позицию для обработки вращения/перемещения камеры
-        self.last_pos = event.pos()
+        self.last_pos = event.position().toPoint()
 
         # Проверяем, находимся ли мы в режиме перетаскивания объекта (Shift + ЛКМ)
         # и есть ли выбранный объект
@@ -412,7 +412,7 @@ class Viewport3D(QWidget):
             self.start_object_drag(event)
         else:
             # Стандартный режим
-            self.mousePressed.emit(event.x(), event.y())
+            self.mousePressed.emit(event.position().x(), event.position().y())
             # Вызываем оригинальный обработчик GLViewWidget
             gl.GLViewWidget.mousePressEvent(self.view, event)
 
@@ -424,13 +424,13 @@ class Viewport3D(QWidget):
         # Если это был клик (а не перетаскивание)
         elif not self.is_dragging and self.mouse_press_pos is not None:
             # Проверяем, что мышь не сдвинулась слишком далеко (порог перетаскивания)
-            delta = event.pos() - self.mouse_press_pos
+            delta = event.position().toPoint() - self.mouse_press_pos
             if delta.manhattanLength() <= self.drag_threshold:
                 # Проверяем режим взаимодействия (только левый клик без модификаторов)
                 if event.button() == Qt.LeftButton and not event.modifiers():
                     # Получаем координаты клика
-                    mouse_x = event.x()
-                    mouse_y = event.y()
+                    mouse_x = event.position().x()
+                    mouse_y = event.position().y()
 
                     # Нормализованные координаты клика
                     nx = (2.0 * mouse_x) / self.view.width() - 1.0
@@ -448,20 +448,20 @@ class Viewport3D(QWidget):
             gl.GLViewWidget.mouseReleaseEvent(self.view, event)
 
         # Сигнал отпускания
-        self.mouseReleased.emit(event.x(), event.y())
+        self.mouseReleased.emit(event.position().x(), event.position().y())
 
     def view_mouse_move_event(self, event):
         """Обработчик движения мыши для GLViewWidget"""
         if self.last_pos is None:
-            self.last_pos = event.pos()
+            self.last_pos = event.position().toPoint()
             return
 
-        dx = event.x() - self.last_pos.x()
-        dy = event.y() - self.last_pos.y()
+        dx = event.position().x() - self.last_pos.x()
+        dy = event.position().y() - self.last_pos.y()
 
         # Если мышь сдвинулась больше порога, считаем что это перетаскивание
         if self.mouse_press_pos is not None:
-            delta = event.pos() - self.mouse_press_pos
+            delta = event.position().toPoint() - self.mouse_press_pos
             if delta.manhattanLength() > self.drag_threshold:
                 self.is_dragging = True
 
@@ -473,7 +473,7 @@ class Viewport3D(QWidget):
             # Стандартное управление камерой - используем оригинальный обработчик
             gl.GLViewWidget.mouseMoveEvent(self.view, event)
 
-        self.last_pos = event.pos()
+        self.last_pos = event.position().toPoint()
 
     def start_object_drag(self, event):
         """Начинает режим перетаскивания объекта"""
@@ -481,7 +481,7 @@ class Viewport3D(QWidget):
             return
 
         self.drag_object_mode = True
-        self.drag_start_pos = event.pos()
+        self.drag_start_pos = event.position().toPoint()
 
         # Получаем текущие координаты объекта
         item = self.view_items[self.selected_object]
@@ -512,8 +512,8 @@ class Viewport3D(QWidget):
             return
 
         # Получаем луч из текущей позиции мыши
-        mouse_x = event.x()
-        mouse_y = event.y()
+        mouse_x = event.position().x()
+        mouse_y = event.position().y()
         nx = (2.0 * mouse_x) / self.view.width() - 1.0
         ny = 1.0 - (2.0 * mouse_y) / self.view.height()
 
@@ -561,10 +561,15 @@ class Viewport3D(QWidget):
         return t
 
     def mouseMoveEvent(self, event):
-        """
-        Обработка движения мыши (перенаправляет на view_mouse_move_event)
-        """
-        self.view_mouse_move_event(event)
+        """Обработка движения мыши"""
+        if event.buttons() & Qt.LeftButton:
+            delta = event.position().toPoint() - self.mouse_press_pos
+            mouse_x = event.position().x()
+            mouse_y = event.position().y()
+
+            # Обновляем положение камеры
+            self.update_camera(delta, mouse_x, mouse_y)
+            self.last_pos = event.position().toPoint()
 
     def wheelEvent(self, event):
         """Обработка колеса мыши"""
@@ -908,9 +913,8 @@ class Viewport3D(QWidget):
 
     def mouseReleaseEvent(self, event):
         """Обработка отпускания кнопки мыши"""
-        self.last_pos = None
-        # Добавляем сигнал об отпускании
-        self.mouseReleased.emit(event.x(), event.y())
+        if event.button() == Qt.LeftButton:
+            self.mouseReleased.emit(event.position().x(), event.position().y())
 
     def set_transform(self, name: str, position=None, rotation=None, scale=None):
         """Устанавливает трансформацию объекта"""
@@ -1010,54 +1014,26 @@ class Viewport3D(QWidget):
 
     def mousePressEvent(self, event):
         """Обработка нажатия кнопки мыши"""
-        self.view_mouse_press_event(event)
         if event.button() == Qt.LeftButton:
-            self._drag_positions.clear()
-            self._drag_times.clear()
+            self.mouse_press_pos = event.position().toPoint()
+            self.last_pos = event.position().toPoint()
+            self.mousePressed.emit(event.position().x(), event.position().y())
 
     def mouseMoveEvent(self, event):
         """Обработка движения мыши"""
-        self.view_mouse_move_event(event)
-        if self.is_dragging and self.selected_object:
-            # Получаем текущую позицию в 3D
-            current_pos = self._get_3d_position_from_mouse(event.pos())
+        if event.buttons() & Qt.LeftButton:
+            delta = event.position().toPoint() - self.mouse_press_pos
+            mouse_x = event.position().x()
+            mouse_y = event.position().y()
 
-            # Сохраняем позицию и время
-            self._drag_positions.append(current_pos)
-            self._drag_times.append(time.time())
-
-            # Ограничиваем историю
-            if len(self._drag_positions) > self._drag_history_length:
-                self._drag_positions.pop(0)
-                self._drag_times.pop(0)
+            # Обновляем положение камеры
+            self.update_camera(delta, mouse_x, mouse_y)
+            self.last_pos = event.position().toPoint()
 
     def mouseReleaseEvent(self, event):
         """Обработка отпускания кнопки мыши"""
-        self.view_mouse_release_event(event)
-        if event.button() == Qt.LeftButton and self.is_dragging and self.selected_object:
-            # Проверяем, включена ли физика для объекта
-            if self.physics_enabled.get(self.selected_object, False):
-                # Рассчитываем вектор скорости на основе истории движения
-                if len(self._drag_positions) >= 2:
-                    # Берем последние две позиции
-                    pos1 = np.array(self._drag_positions[-2])
-                    pos2 = np.array(self._drag_positions[-1])
-                    time1 = self._drag_times[-2]
-                    time2 = self._drag_times[-1]
-
-                    # Рассчитываем скорость
-                    dt = time2 - time1
-                    if dt > 0:
-                        velocity = (pos2 - pos1) / dt
-                        # Масштабируем скорость для более естественного эффекта
-                        velocity *= 2.0  # Можно настроить этот коэффициент
-
-                        # Эмитим сигнал с новой скоростью
-                        self.object_thrown.emit(self.selected_object, velocity.tolist())
-
-            # Очищаем историю перетаскивания
-            self._drag_positions.clear()
-            self._drag_times.clear()
+        if event.button() == Qt.LeftButton:
+            self.mouseReleased.emit(event.position().x(), event.position().y())
 
     def paintGL(self):
         """Отрисовка OpenGL"""

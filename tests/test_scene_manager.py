@@ -1,11 +1,15 @@
 import pytest
 import numpy as np
 from simple_visualizer.core.scene_manager import SceneManager
+from unittest.mock import MagicMock
 
 class TestSceneManager:
     @pytest.fixture
     def scene_manager(self):
-        return SceneManager()
+        manager = SceneManager()
+        # Создаем мок для viewport
+        manager.viewport = MagicMock()
+        return manager
 
     def test_add_mesh(self, scene_manager):
         """Тест добавления меша в сцену"""
