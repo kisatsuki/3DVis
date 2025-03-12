@@ -1,0 +1,28 @@
+# Глобальные переменные для хранения состояния между кадрами
+if 'state' not in globals():
+    state = {
+        'radius': 2.0,
+        'height': 0.0,
+        'angular_speed': 2.0,
+        'vertical_speed': 0.5,
+        'total_time': 0.0
+    }
+
+# Обновляем состояние
+state['total_time'] += t
+
+# Изменяем радиус спирали со временем (пульсация)
+radius = state['radius'] * (1 + 0.3 * sin(state['total_time'] * 0.5))
+
+# Вычисляем координаты
+x = radius * sin(state['total_time'] * state['angular_speed'])
+y = state['height']
+z = radius * cos(state['total_time'] * state['angular_speed'])
+
+# Обновляем высоту с отскоком
+state['height'] += state['vertical_speed'] * dt
+if abs(state['height']) > 3:
+    state['vertical_speed'] = -state['vertical_speed']
+
+# Возвращаем результат
+result = (x, y, z)

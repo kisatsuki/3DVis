@@ -1,0 +1,28 @@
+# Инициализация состояния
+if 'state' not in globals():
+    state = {
+        'phase': 0.0,
+        'scale': 3.0,
+        'speed_multiplier': 1.0,
+        'direction': 1
+    }
+
+# Обновляем фазу
+state['phase'] += t * state['speed_multiplier']
+
+# Изменяем скорость движения
+if state['phase'] > pi * 2:
+    state['phase'] = 0
+    state['speed_multiplier'] = 0.5 + abs(sin(t)) * 1.5
+    state['direction'] *= -1
+
+# Вычисляем позицию по параметрическим уравнениям
+scale = state['scale']
+x = scale * sin(state['phase'])
+y = 0
+z = scale * sin(state['phase'] * 2) * state['direction']
+
+# Добавляем небольшое вертикальное колебание
+y = 0.5 * sin(state['phase'] * 3)
+
+result = (x, y, z)
