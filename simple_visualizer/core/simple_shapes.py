@@ -1,6 +1,6 @@
 import numpy as np
 import logging
-from typing import Tuple, Dict
+from typing import Tuple, Dict, Optional
 from abc import ABC, abstractmethod
 
 logger = logging.getLogger("simple_visualizer.core.simple_shapes")
@@ -10,6 +10,8 @@ class CollisionType(ABC):
     SPHERE = 1
     BOX = 2
     CYLINDER = 3
+    CONE = 4
+    TORUS = 5
 
 class Object3D(ABC):
     def __init__(self, name: str, **kwargs):
@@ -357,9 +359,18 @@ class Box3D(Object3D):
         return {
             'type': 'box',
             'data': {
+                'bounds': self._calculate_scaled_bounds(),
                 'size': self.calculate_bounding_radius() * 2
             }
         }
+        
+    def _calculate_scaled_bounds(self):
+        """Рассчитывает границы с учетом масштаба"""
+        bounds = self._collision_data['bounds']
+        scale = self.scale
+        min_bound = [bounds[i] * scale[i % 3] for i in range(3)]
+        max_bound = [bounds[i+3] * scale[i % 3] for i in range(3)]
+        return (*min_bound, *max_bound)
 
     def calculate_bounding_radius(self):
         bounds = self._collision_data['bounds']
@@ -386,4 +397,368 @@ class Box3D(Object3D):
         tmin = max(min(tx1, tx2), min(ty1, ty2), min(tz1, tz2))
         tmax = min(max(tx1, tx2), max(ty1, ty2), max(tz1, tz2))
         
-        return tmin if tmin <= tmax and tmax > 0 else None 
+        return tmin if tmin <= tmax and tmax > 0 else None
+
+class Cylinder3D(Object3D):
+    def __init__(self, name: str, radius: float = 1.0, height: float = 2.0, **kwargs):
+        super().__init__(name, **kwargs)
+        self._collision_type = CollisionType.CYLINDER
+        self._collision_data = {
+            'radius': radius,
+            'height': height
+        }
+    
+    def get_collision_data(self) -> Dict:
+        """Получает данные о коллайдере цилиндра"""
+        scaled_radius = self._collision_data['radius'] * max(self.scale[0], self.scale[1])
+        scaled_height = self._collision_data['height'] * self.scale[2]
+        
+        return {
+            'type': CollisionType.CYLINDER,
+            'data': {
+                'radius': scaled_radius,
+                'height': scaled_height
+            },
+            'center': self.position,
+            'radius': scaled_radius,
+            'height': scaled_height
+        }
+
+    def ray_intersect(self, ray_origin, ray_direction):
+        """Проверка пересечения луча с цилиндром"""
+        if self.collision_type != CollisionType.CYLINDER:
+            return None
+            
+        radius = self._collision_data['radius'] * max(self.scale[0], self.scale[1])
+        height = self._collision_data['height'] * self.scale[2]
+        half_height = height / 2.0
+        
+        # Вектор от начала луча до центра цилиндра
+        oc = ray_origin - self.position
+        
+        # Проверяем пересечение с боковой поверхностью цилиндра
+        # (игнорируем координату Z)
+        a = ray_direction[0]**2 + ray_direction[1]**2
+        b = 2.0 * (oc[0] * ray_direction[0] + oc[1] * ray_direction[1])
+        c = oc[0]**2 + oc[1]**2 - radius**2
+        
+        discriminant = b**2 - 4 * a * c
+        
+        if discriminant < 0:
+            return None
+            
+        t1 = (-b - np.sqrt(discriminant)) / (2.0 * a)
+        t2 = (-b + np.sqrt(discriminant)) / (2.0 * a)
+        
+        # Берем ближайшее положительное пересечение
+        t = t1 if t1 > 0 else t2
+        
+        if t <= 0:
+            return None
+            
+        # Проверяем, находится ли точка пересечения в пределах высоты цилиндра
+        hit_point = ray_origin + ray_direction * t
+        hit_height = hit_point[2] - self.position[2]
+        
+        if abs(hit_height) <= half_height:
+            return t
+            
+        # Проверяем пересечение с верхним и нижним основаниями
+        t_top = (self.position[2] + half_height - ray_origin[2]) / ray_direction[2]
+        t_bottom = (self.position[2] - half_height - ray_origin[2]) / ray_direction[2]
+        
+        # Проверяем верхнее основание
+        if t_top > 0:
+            hit_point = ray_origin + ray_direction * t_top
+            dx = hit_point[0] - self.position[0]
+            dy = hit_point[1] - self.position[1]
+            if dx**2 + dy**2 <= radius**2:
+                return t_top
+                
+        # Проверяем нижнее основание
+        if t_bottom > 0:
+            hit_point = ray_origin + ray_direction * t_bottom
+            dx = hit_point[0] - self.position[0]
+            dy = hit_point[1] - self.position[1]
+            if dx**2 + dy**2 <= radius**2:
+                return t_bottom
+                
+        return None
+
+class Cone3D(Object3D):
+    def __init__(self, name: str, radius: float = 1.0, height: float = 2.0, **kwargs):
+        super().__init__(name, **kwargs)
+        self._collision_type = CollisionType.CONE
+        self._collision_data = {
+            'radius': radius,
+            'height': height
+        }
+    
+    def get_collision_data(self) -> Dict:
+        """Получает данные о коллайдере конуса"""
+        scaled_radius = self._collision_data['radius'] * max(self.scale[0], self.scale[1])
+        scaled_height = self._collision_data['height'] * self.scale[2]
+        
+        return {
+            'type': CollisionType.CONE,
+            'data': {
+                'radius': scaled_radius,
+                'height': scaled_height
+            },
+            'center': self.position,
+            'radius': scaled_radius,
+            'height': scaled_height
+        }
+        
+    def ray_intersect(self, ray_origin, ray_direction):
+        """Проверка пересечения луча с конусом"""
+        if self.collision_type != CollisionType.CONE:
+            return None
+            
+        radius = self._collision_data['radius'] * max(self.scale[0], self.scale[1])
+        height = self._collision_data['height'] * self.scale[2]
+        
+        # Вектор от начала луча до центра конуса
+        oc = ray_origin - self.position
+        
+        # Вершина конуса находится на высоте height/2 от центра
+        apex = self.position + np.array([0, 0, height/2])
+        # Центр основания находится на высоте -height/2 от центра
+        base_center = self.position + np.array([0, 0, -height/2])
+        
+        # Вектор направления оси конуса (от основания к вершине)
+        axis = np.array([0, 0, 1])
+        
+        # Угол раствора конуса
+        half_angle = np.arctan(radius / height)
+        cos_half_angle = np.cos(half_angle)
+        
+        # Проверка пересечения с боковой поверхностью конуса
+        co = ray_origin - apex
+        cos_angle = np.dot(co, axis) / np.linalg.norm(co)
+        
+        # Если луч проходит через вершину конуса
+        if np.linalg.norm(co) < 1e-6:
+            return 0.0
+            
+        # Проверяем пересечение с боковой поверхностью
+        a = ray_direction[0]**2 + ray_direction[1]**2 - ray_direction[2]**2 * (radius / height)**2
+        b = 2.0 * (co[0] * ray_direction[0] + co[1] * ray_direction[1] - 
+                  co[2] * ray_direction[2] * (radius / height)**2)
+        c = co[0]**2 + co[1]**2 - co[2]**2 * (radius / height)**2
+        
+        discriminant = b**2 - 4 * a * c
+        
+        if abs(a) < 1e-6:
+            if abs(b) < 1e-6:
+                return None
+            t = -c / b
+            if t > 0:
+                hit_point = ray_origin + ray_direction * t
+                # Проверяем, что точка находится внутри конуса
+                if hit_point[2] >= apex[2]:
+                    return None
+                if hit_point[2] <= base_center[2]:
+                    return None
+                return t
+            return None
+            
+        if discriminant < 0:
+            return None
+            
+        t1 = (-b - np.sqrt(discriminant)) / (2.0 * a)
+        t2 = (-b + np.sqrt(discriminant)) / (2.0 * a)
+        
+        # Берем ближайшее положительное пересечение
+        t = t1 if t1 > 0 else t2
+        
+        if t <= 0:
+            return None
+            
+        # Проверяем, находится ли точка пересечения в пределах конуса
+        hit_point = ray_origin + ray_direction * t
+        if hit_point[2] > apex[2] or hit_point[2] < base_center[2]:
+            return None
+            
+        return t
+        
+class Torus3D(Object3D):
+    def __init__(self, name: str, major_radius: float = 1.0, minor_radius: float = 0.3, **kwargs):
+        super().__init__(name, **kwargs)
+        self._collision_type = CollisionType.TORUS
+        self._collision_data = {
+            'major_radius': major_radius,
+            'minor_radius': minor_radius
+        }
+    
+    def get_collision_data(self) -> Dict:
+        """Получает данные о коллайдере тора"""
+        scaled_major = self._collision_data['major_radius'] * max(self.scale[0], self.scale[1])
+        scaled_minor = self._collision_data['minor_radius'] * self.scale[2]
+        
+        return {
+            'type': CollisionType.TORUS,
+            'data': {
+                'major_radius': scaled_major,
+                'minor_radius': scaled_minor
+            },
+            'center': self.position,
+            'major_radius': scaled_major,
+            'minor_radius': scaled_minor
+        }
+        
+    def ray_intersect(self, ray_origin, ray_direction):
+        """Проверка пересечения луча с тором (аппроксимация)"""
+        if self.collision_type != CollisionType.TORUS:
+            return None
+            
+        # Для тора сложно найти точное аналитическое решение
+        # Используем приближение на основе сферы
+        
+        major_radius = self._collision_data['major_radius'] * max(self.scale[0], self.scale[1])
+        minor_radius = self._collision_data['minor_radius'] * self.scale[2]
+        
+        # Вектор от начала луча до центра тора
+        oc = ray_origin - self.position
+        
+        # Проецируем на плоскость XY
+        oc_xy = np.array([oc[0], oc[1], 0])
+        length_xy = np.linalg.norm(oc_xy)
+        
+        if length_xy < 1e-6:
+            # Луч проходит через центр тора, используем приближение
+            sphere_radius = major_radius + minor_radius
+            
+            a = np.dot(ray_direction, ray_direction)
+            b = 2.0 * np.dot(oc, ray_direction)
+            c = np.dot(oc, oc) - sphere_radius**2
+            
+            discriminant = b**2 - 4 * a * c
+            
+            if discriminant < 0:
+                return None
+                
+            t = (-b - np.sqrt(discriminant)) / (2.0 * a)
+            return t if t > 0 else None
+        
+        # Найдем ближайшую точку на кольце тора
+        normalized_oc_xy = oc_xy / length_xy
+        ring_point = normalized_oc_xy * major_radius
+        
+        # Создадим сферу в этой точке радиусом minor_radius
+        sphere_center = self.position + ring_point
+        
+        # Проверяем пересечение со сферой
+        oc_sphere = ray_origin - sphere_center
+        
+        a = np.dot(ray_direction, ray_direction)
+        b = 2.0 * np.dot(oc_sphere, ray_direction)
+        c = np.dot(oc_sphere, oc_sphere) - minor_radius**2
+        
+        discriminant = b**2 - 4 * a * c
+        
+        if discriminant < 0:
+            return None
+            
+        t = (-b - np.sqrt(discriminant)) / (2.0 * a)
+        return t if t > 0 else None 
+
+def create_box_object(name: str, size: float = 1.0, position: Tuple[float, float, float] = (0, 0, 0)):
+    """
+    Создает объект куба с соответствующим коллайдером
+    
+    Args:
+        name: Имя объекта
+        size: Размер куба (или tuple для разных размеров по осям)
+        position: Позиция объекта (x, y, z)
+        
+    Returns:
+        Box3D: Объект куба с коллайдером
+    """
+    # Преобразуем size в tuple, если передано одно значение
+    if isinstance(size, (int, float)):
+        size = (size, size, size)
+    
+    # Создаем объект куба
+    cube = Box3D(name, size=size)
+    cube.position = np.array(position)
+    
+    return cube
+
+def create_sphere_object(name: str, radius: float = 1.0, position: Tuple[float, float, float] = (0, 0, 0)):
+    """
+    Создает объект сферы с соответствующим коллайдером
+    
+    Args:
+        name: Имя объекта
+        radius: Радиус сферы
+        position: Позиция объекта (x, y, z)
+        
+    Returns:
+        Sphere3D: Объект сферы с коллайдером
+    """
+    # Создаем объект сферы
+    sphere = Sphere3D(name, radius=radius)
+    sphere.position = np.array(position)
+    
+    return sphere
+
+def create_cylinder_object(name: str, radius: float = 1.0, height: float = 2.0, 
+                         position: Tuple[float, float, float] = (0, 0, 0)):
+    """
+    Создает объект цилиндра с соответствующим коллайдером
+    
+    Args:
+        name: Имя объекта
+        radius: Радиус цилиндра
+        height: Высота цилиндра
+        position: Позиция объекта (x, y, z)
+        
+    Returns:
+        Cylinder3D: Объект цилиндра с коллайдером
+    """
+    # Создаем объект цилиндра
+    cylinder = Cylinder3D(name, radius=radius, height=height)
+    cylinder.position = np.array(position)
+    
+    return cylinder
+
+def create_cone_object(name: str, radius: float = 1.0, height: float = 2.0, 
+                     position: Tuple[float, float, float] = (0, 0, 0)):
+    """
+    Создает объект конуса с соответствующим коллайдером
+    
+    Args:
+        name: Имя объекта
+        radius: Радиус основания конуса
+        height: Высота конуса
+        position: Позиция объекта (x, y, z)
+        
+    Returns:
+        Cone3D: Объект конуса с коллайдером
+    """
+    # Создаем объект конуса
+    cone = Cone3D(name, radius=radius, height=height)
+    cone.position = np.array(position)
+    
+    return cone
+
+def create_torus_object(name: str, major_radius: float = 1.0, minor_radius: float = 0.3, 
+                      position: Tuple[float, float, float] = (0, 0, 0)):
+    """
+    Создает объект тора с соответствующим коллайдером
+    
+    Args:
+        name: Имя объекта
+        major_radius: Большой радиус тора
+        minor_radius: Малый радиус тора
+        position: Позиция объекта (x, y, z)
+        
+    Returns:
+        Torus3D: Объект тора с коллайдером
+    """
+    # Создаем объект тора
+    torus = Torus3D(name, major_radius=major_radius, minor_radius=minor_radius)
+    torus.position = np.array(position)
+    
+    return torus 

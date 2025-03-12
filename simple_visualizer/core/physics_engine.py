@@ -94,13 +94,38 @@ class PhysicsEngine(QObject):
 
         collider_data = {
             'type': params['collider_type'],
-            'data': params['collider_data']
+            'data': params['collider_data'].copy()
         }
 
-        # Для сферического коллайдера добавляем центр
-        if params['collider_type'] == 'sphere':
-            obj = self.objects[name]
+        # Получаем дополнительные параметры в зависимости от типа коллайдера
+        obj = self.objects[name]
+        
+        # Для сферического коллайдера добавляем центр и радиус
+        if params['collider_type'] == 'sphere' or params['collider_type'] == 1:
             collider_data['radius'] = params['collider_data']['radius']
+            collider_data['center'] = obj.position
+            
+        # Для кубического коллайдера добавляем bounds
+        elif params['collider_type'] == 'box' or params['collider_type'] == 2:
+            # bounds уже есть в данных
+            pass
+            
+        # Для цилиндрического коллайдера
+        elif params['collider_type'] == 'cylinder' or params['collider_type'] == 3:
+            collider_data['radius'] = params['collider_data']['radius']
+            collider_data['height'] = params['collider_data']['height']
+            collider_data['center'] = obj.position
+            
+        # Для конического коллайдера
+        elif params['collider_type'] == 'cone' or params['collider_type'] == 4:
+            collider_data['radius'] = params['collider_data']['radius']
+            collider_data['height'] = params['collider_data']['height']
+            collider_data['center'] = obj.position
+            
+        # Для тора
+        elif params['collider_type'] == 'torus' or params['collider_type'] == 5:
+            collider_data['major_radius'] = params['collider_data']['major_radius']
+            collider_data['minor_radius'] = params['collider_data']['minor_radius']
             collider_data['center'] = obj.position
 
         self.collider_updated.emit(name, collider_data)

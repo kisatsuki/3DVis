@@ -1109,7 +1109,7 @@ class Viewport3D(QWidget):
                     item.setVisible(False)
             return
 
-        if collider_data['type'] == 'sphere':
+        if collider_data['type'] == 'sphere' or collider_data['type'] == 1:  # CollisionType.SPHERE
             # Создаем или переиспользуем одну линию для всей сферы
             if name not in self.collider_visualizations:
                 line = gl.GLLinePlotItem(color=(1, 0, 0, 1), width=1)
@@ -1126,8 +1126,18 @@ class Viewport3D(QWidget):
             line.setData(pos=points)
             line.setVisible(True)
 
-        elif collider_data['type'] == 'box':
-            bounds = collider_data['data']['bounds']
+        elif collider_data['type'] == 'box' or collider_data['type'] == 2:  # CollisionType.BOX
+            # Если bounds не указаны, используем данные из 'data'
+            if 'bounds' in collider_data:
+                bounds = collider_data['bounds']
+            elif 'data' in collider_data and 'bounds' in collider_data['data']:
+                bounds = collider_data['data']['bounds']
+            else:
+                # Если размер задан, создаем bounds из него
+                size = collider_data.get('data', {}).get('size', 1.0)
+                half_size = size / 2
+                bounds = [-half_size, -half_size, -half_size, half_size, half_size, half_size]
+            
             vertices = []
 
             # Создаем вершины куба
@@ -1158,3 +1168,198 @@ class Viewport3D(QWidget):
             # Обновляем все точки сразу
             line.setData(pos=np.array(points))
             line.setVisible(True)
+            
+        elif collider_data['type'] == 'cylinder' or collider_data['type'] == 3:  # CollisionType.CYLINDER
+            # Получаем параметры цилиндра
+            radius = collider_data.get('radius', 1.0)
+            height = collider_data.get('height', 2.0)
+            center = collider_data.get('center', (0, 0, 0))
+            
+            # Создаем или переиспользуем линии для цилиндра
+            if name not in self.collider_visualizations:
+                # Линии для верхнего и нижнего оснований
+                top_circle = gl.GLLinePlotItem(color=(1, 0, 0, 1), width=1)
+                bottom_circle = gl.GLLinePlotItem(color=(1, 0, 0, 1), width=1)
+                # Линии для боковых ребер
+                side_lines = gl.GLLinePlotItem(color=(1, 0, 0, 1), width=1)
+                
+                self.view.addItem(top_circle)
+                self.view.addItem(bottom_circle)
+                self.view.addItem(side_lines)
+                
+                self.collider_visualizations[name] = [top_circle, bottom_circle, side_lines]
+            else:
+                top_circle, bottom_circle, side_lines = self.collider_visualizations[name]
+            
+            # Создаем точки для верхнего основания
+            theta = np.linspace(0, 2*np.pi, 24)
+            top_points = []
+            for t in theta:
+                x = center[0] + radius * np.cos(t)
+                y = center[1] + radius * np.sin(t)
+                z = center[2] + height/2
+                top_points.append([x, y, z])
+            top_points.append(top_points[0])  # Замыкаем круг
+            
+            # Создаем точки для нижнего основания
+            bottom_points = []
+            for t in theta:
+                x = center[0] + radius * np.cos(t)
+                y = center[1] + radius * np.sin(t)
+                z = center[2] - height/2
+                bottom_points.append([x, y, z])
+            bottom_points.append(bottom_points[0])  # Замыкаем круг
+            
+            # Создаем точки для боковых ребер (соединяем верхнее и нижнее основания)
+            side_points = []
+            num_segments = 12  # Количество вертикальных линий
+            for i in range(num_segments):
+                t = 2 * np.pi * i / num_segments
+                x = center[0] + radius * np.cos(t)
+                y = center[1] + radius * np.sin(t)
+                
+                # Верхняя точка
+                top_point = [x, y, center[2] + height/2]
+                # Нижняя точка
+                bottom_point = [x, y, center[2] - height/2]
+                
+                side_points.append(top_point)
+                side_points.append(bottom_point)
+            
+            # Обновляем линии
+            top_circle.setData(pos=np.array(top_points))
+            bottom_circle.setData(pos=np.array(bottom_points))
+            side_lines.setData(pos=np.array(side_points))
+            
+            # Делаем линии видимыми
+            top_circle.setVisible(True)
+            bottom_circle.setVisible(True)
+            side_lines.setVisible(True)
+            
+        elif collider_data['type'] == 'cone' or collider_data['type'] == 4:  # CollisionType.CONE
+            # Получаем параметры конуса
+            radius = collider_data.get('radius', 1.0)
+            height = collider_data.get('height', 2.0)
+            center = collider_data.get('center', (0, 0, 0))
+            
+            # Вершина конуса и центр основания
+            apex = [center[0], center[1], center[2] + height/2]
+            base_center = [center[0], center[1], center[2] - height/2]
+            
+            # Создаем или переиспользуем линии для конуса
+            if name not in self.collider_visualizations:
+                # Линия для основания
+                base_circle = gl.GLLinePlotItem(color=(1, 0, 0, 1), width=1)
+                # Линии для боковых ребер
+                side_lines = gl.GLLinePlotItem(color=(1, 0, 0, 1), width=1)
+                
+                self.view.addItem(base_circle)
+                self.view.addItem(side_lines)
+                
+                self.collider_visualizations[name] = [base_circle, side_lines]
+            else:
+                base_circle, side_lines = self.collider_visualizations[name]
+            
+            # Создаем точки для основания
+            theta = np.linspace(0, 2*np.pi, 24)
+            base_points = []
+            for t in theta:
+                x = base_center[0] + radius * np.cos(t)
+                y = base_center[1] + radius * np.sin(t)
+                z = base_center[2]
+                base_points.append([x, y, z])
+            base_points.append(base_points[0])  # Замыкаем круг
+            
+            # Создаем точки для боковых ребер (соединяем вершину и основание)
+            side_points = []
+            num_segments = 12  # Количество боковых линий
+            for i in range(num_segments):
+                t = 2 * np.pi * i / num_segments
+                x = base_center[0] + radius * np.cos(t)
+                y = base_center[1] + radius * np.sin(t)
+                
+                # Точка на основании
+                base_point = [x, y, base_center[2]]
+                
+                side_points.append(apex)
+                side_points.append(base_point)
+            
+            # Обновляем линии
+            base_circle.setData(pos=np.array(base_points))
+            side_lines.setData(pos=np.array(side_points))
+            
+            # Делаем линии видимыми
+            base_circle.setVisible(True)
+            side_lines.setVisible(True)
+            
+        elif collider_data['type'] == 'torus' or collider_data['type'] == 5:  # CollisionType.TORUS
+            # Получаем параметры тора
+            major_radius = collider_data.get('major_radius', 1.0)
+            minor_radius = collider_data.get('minor_radius', 0.3)
+            center = collider_data.get('center', (0, 0, 0))
+            
+            # Создаем или переиспользуем линии для тора
+            if name not in self.collider_visualizations:
+                outer_circle = gl.GLLinePlotItem(color=(1, 0, 0, 1), width=1)
+                inner_circle = gl.GLLinePlotItem(color=(1, 0, 0, 1), width=1)
+                cross_section1 = gl.GLLinePlotItem(color=(1, 0, 0, 1), width=1)
+                cross_section2 = gl.GLLinePlotItem(color=(1, 0, 0, 1), width=1)
+                
+                self.view.addItem(outer_circle)
+                self.view.addItem(inner_circle)
+                self.view.addItem(cross_section1)
+                self.view.addItem(cross_section2)
+                
+                self.collider_visualizations[name] = [outer_circle, inner_circle, cross_section1, cross_section2]
+            else:
+                outer_circle, inner_circle, cross_section1, cross_section2 = self.collider_visualizations[name]
+            
+            # Создаем точки для внешнего круга тора
+            theta = np.linspace(0, 2*np.pi, 48)
+            outer_points = []
+            for t in theta:
+                x = center[0] + (major_radius + minor_radius) * np.cos(t)
+                y = center[1] + (major_radius + minor_radius) * np.sin(t)
+                z = center[2]
+                outer_points.append([x, y, z])
+            outer_points.append(outer_points[0])  # Замыкаем круг
+            
+            # Создаем точки для внутреннего круга тора
+            inner_points = []
+            for t in theta:
+                x = center[0] + (major_radius - minor_radius) * np.cos(t)
+                y = center[1] + (major_radius - minor_radius) * np.sin(t)
+                z = center[2]
+                inner_points.append([x, y, z])
+            inner_points.append(inner_points[0])  # Замыкаем круг
+            
+            # Создаем точки для первого поперечного сечения (вдоль оси X)
+            cross1_points = []
+            phi = np.linspace(0, 2*np.pi, 24)
+            for p in phi:
+                x = center[0] + major_radius
+                y = center[1] + minor_radius * np.cos(p)
+                z = center[2] + minor_radius * np.sin(p)
+                cross1_points.append([x, y, z])
+            cross1_points.append(cross1_points[0])  # Замыкаем круг
+            
+            # Создаем точки для второго поперечного сечения (вдоль оси Y)
+            cross2_points = []
+            for p in phi:
+                x = center[0] + minor_radius * np.cos(p)
+                y = center[1] + major_radius
+                z = center[2] + minor_radius * np.sin(p)
+                cross2_points.append([x, y, z])
+            cross2_points.append(cross2_points[0])  # Замыкаем круг
+            
+            # Обновляем линии
+            outer_circle.setData(pos=np.array(outer_points))
+            inner_circle.setData(pos=np.array(inner_points))
+            cross_section1.setData(pos=np.array(cross1_points))
+            cross_section2.setData(pos=np.array(cross2_points))
+            
+            # Делаем линии видимыми
+            outer_circle.setVisible(True)
+            inner_circle.setVisible(True)
+            cross_section1.setVisible(True)
+            cross_section2.setVisible(True)
