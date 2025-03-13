@@ -11,7 +11,7 @@ from pathlib import Path
 from simple_visualizer.core.viewport import Viewport3D
 from simple_visualizer.core.scene_manager import SceneManager
 from simple_visualizer.core.simple_shapes import create_cube, create_sphere, create_torus, create_cone, create_cylinder, \
-    create_floor
+    create_floor, create_sphere_object, create_box_object, create_torus_object, create_cylinder_object, create_cone_object
 from simple_visualizer.ui.control_panel import ControlPanel
 from simple_visualizer.ui.dialogs.script_editor import ScriptEditorDialog
 from simple_visualizer.ui.widgets.inspector_panel import InspectorPanel
@@ -68,6 +68,10 @@ class MainWindow(QMainWindow):
         if hasattr(self.scene_manager, 'physics_engine'):
             self.scene_manager.physics_engine.collider_updated.connect(
                 self.viewport.update_collider
+            )
+            # Подключаем сигнал обновления позиции объекта
+            self.scene_manager.physics_engine.object_position_updated.connect(
+                self._update_object_position
             )
 
         # Устанавливаем вьюпорт в менеджер сцены
@@ -372,11 +376,18 @@ class MainWindow(QMainWindow):
             # Создаем уникальное имя
             name = f"Куб_{len(self.scene_manager.objects) + 1}"
 
-            # Создаем куб
-            vertices, faces = create_cube(size=2.0)
-
-            # Добавляем в менеджер сцены
-            self.scene_manager.add_mesh(name, vertices, faces)
+            # Создаем куб с коллайдером
+            cube = create_box_object(name, size=2.0)
+            
+            # Добавляем в сцену
+            cube.create_view_item(self.viewport)
+            
+            # Регистрируем в менеджере сцены и физическом движке
+            self.scene_manager.objects[name] = cube
+            self.scene_manager.physics_engine.register_object(cube)
+            
+            # Отправляем сигнал о добавлении объекта
+            self.scene_manager.object_manager.object_added.emit(name)
 
             # Обновляем панель управления
             self.control_panel.update_object_list(self.scene_manager.objects)
@@ -392,11 +403,18 @@ class MainWindow(QMainWindow):
             # Создаем уникальное имя
             name = f"Сфера_{len(self.scene_manager.objects) + 1}"
 
-            # Создаем сферу
-            vertices, faces = create_sphere(radius=1.5, resolution=20)
-
-            # Добавляем в менеджер сцены
-            self.scene_manager.add_mesh(name, vertices, faces, color=(0.7, 0.3, 0.3, 1.0))
+            # Создаем сферу с коллайдером
+            sphere = create_sphere_object(name, radius=1.5, color=(0.7, 0.3, 0.3, 1.0))
+            
+            # Добавляем в сцену
+            sphere.create_view_item(self.viewport)
+            
+            # Регистрируем в менеджере сцены и физическом движке
+            self.scene_manager.objects[name] = sphere
+            self.scene_manager.physics_engine.register_object(sphere)
+            
+            # Отправляем сигнал о добавлении объекта
+            self.scene_manager.object_manager.object_added.emit(name)
 
             # Обновляем панель управления
             self.control_panel.update_object_list(self.scene_manager.objects)
@@ -412,11 +430,18 @@ class MainWindow(QMainWindow):
             # Создаем уникальное имя
             name = f"Тор_{len(self.scene_manager.objects) + 1}"
 
-            # Создаем тор
-            vertices, faces = create_torus(major_radius=1.5, minor_radius=0.5, resolution=20)
-
-            # Добавляем в менеджер сцены
-            self.scene_manager.add_mesh(name, vertices, faces, color=(0.3, 0.7, 0.3, 1.0))
+            # Создаем тор с коллайдером
+            torus = create_torus_object(name, major_radius=1.5, minor_radius=0.5, color=(0.3, 0.7, 0.3, 1.0))
+            
+            # Добавляем в сцену
+            torus.create_view_item(self.viewport)
+            
+            # Регистрируем в менеджере сцены и физическом движке
+            self.scene_manager.objects[name] = torus
+            self.scene_manager.physics_engine.register_object(torus)
+            
+            # Отправляем сигнал о добавлении объекта
+            self.scene_manager.object_manager.object_added.emit(name)
 
             # Обновляем панель управления
             self.control_panel.update_object_list(self.scene_manager.objects)
@@ -432,11 +457,18 @@ class MainWindow(QMainWindow):
             # Создаем уникальное имя
             name = f"Цилиндр_{len(self.scene_manager.objects) + 1}"
 
-            # Создаем тор
-            vertices, faces = create_cylinder()
-
-            # Добавляем в менеджер сцены
-            self.scene_manager.add_mesh(name, vertices, faces, color=(0.3, 0.7, 0.3, 1.0))
+            # Создаем цилиндр с коллайдером
+            cylinder = create_cylinder_object(name, radius=1.0, height=2.0, color=(0.3, 0.7, 0.3, 1.0))
+            
+            # Добавляем в сцену
+            cylinder.create_view_item(self.viewport)
+            
+            # Регистрируем в менеджере сцены и физическом движке
+            self.scene_manager.objects[name] = cylinder
+            self.scene_manager.physics_engine.register_object(cylinder)
+            
+            # Отправляем сигнал о добавлении объекта
+            self.scene_manager.object_manager.object_added.emit(name)
 
             # Обновляем панель управления
             self.control_panel.update_object_list(self.scene_manager.objects)
@@ -472,11 +504,18 @@ class MainWindow(QMainWindow):
             # Создаем уникальное имя
             name = f"Конус_{len(self.scene_manager.objects) + 1}"
 
-            # Создаем конус
-            vertices, faces = create_cone(radius=1.0, height=2.0, resolution=20)
-
-            # Добавляем в менеджер сцены
-            self.scene_manager.add_mesh(name, vertices, faces, color=(0.3, 0.3, 0.7, 1.0))
+            # Создаем конус с коллайдером
+            cone = create_cone_object(name, radius=1.0, height=2.0, color=(0.3, 0.3, 0.7, 1.0))
+            
+            # Добавляем в сцену
+            cone.create_view_item(self.viewport)
+            
+            # Регистрируем в менеджере сцены и физическом движке
+            self.scene_manager.objects[name] = cone
+            self.scene_manager.physics_engine.register_object(cone)
+            
+            # Отправляем сигнал о добавлении объекта
+            self.scene_manager.object_manager.object_added.emit(name)
 
             # Обновляем панель управления
             self.control_panel.update_object_list(self.scene_manager.objects)
@@ -808,3 +847,8 @@ class MainWindow(QMainWindow):
         
         status = "enabled" if self.debug_colliders else "disabled"
         self.statusBar.showMessage(f"Collider visualization {status}", 2000)
+
+    def _update_object_position(self, object_name, position):
+        """Обработчик обновления позиции объекта"""
+        self.logger.debug(f"Позиция объекта '{object_name}' обновлена: {position}")
+        self.scene_manager.set_object_position(object_name, position)

@@ -14,6 +14,7 @@ from PySide6.QtCore import QObject, Signal, QTimer
 from .object3d import Object3D, Mesh3D, Points3D, Line3D
 from simple_visualizer.utils.error_handlers import handle_object_operation
 from .simple_shapes import create_cube, create_sphere, create_torus, create_cone, create_floor, create_cylinder
+from .simple_shapes import create_sphere_object, create_box_object, create_cylinder_object, create_cone_object, create_torus_object
 from .physics_engine import PhysicsEngine
 from .serialization.scene_serializer import SceneSerializer
 from .managers.animation_manager import AnimationManager
@@ -275,16 +276,73 @@ class SceneManager(QObject):
         if not all(key in obj_data for key in ['vertices', 'faces']):
             self.logger.error(f"Отсутствуют необходимые данные для меша '{name}'")
             return False
-
-        vertices = np.array(obj_data['vertices'])
-        faces = np.array(obj_data['faces'])
+        
+        # Проверяем, есть ли информация о типе коллайдера
+        collider_type = obj_data.get('collider_type', None)
         color = obj_data.get('color', (0.7, 0.7, 0.7, 1.0))
         visible = obj_data.get('visible', True)
-
-        if self.add_mesh(name, vertices, faces, color, visible):
-            self._apply_object_properties(name, obj_data)
-            return True
-        return False
+        transform = obj_data.get('transform', {})
+        position = transform.get('position', (0, 0, 0))
+        
+        # Анализируем имя объекта, чтобы определить тип
+        name_lower = name.lower()
+        
+        # Создаем объект с соответствующим коллайдером на основе имени или типа коллайдера
+        created_object = None
+        
+        # Если есть явный тип коллайдера, используем его
+        if collider_type:
+            if collider_type == 'sphere':
+                radius = obj_data.get('collider_data', {}).get('radius', 1.0)
+                created_object = create_sphere_object(name, radius=radius, position=position, color=color)
+            elif collider_type == 'box':
+                size = obj_data.get('collider_data', {}).get('size', 1.0)
+                created_object = create_box_object(name, size=size, position=position, color=color)
+            elif collider_type == 'cylinder':
+                radius = obj_data.get('collider_data', {}).get('radius', 1.0)
+                height = obj_data.get('collider_data', {}).get('height', 2.0)
+                created_object = create_cylinder_object(name, radius=radius, height=height, position=position, color=color)
+            elif collider_type == 'cone':
+                radius = obj_data.get('collider_data', {}).get('radius', 1.0)
+                height = obj_data.get('collider_data', {}).get('height', 2.0)
+                created_object = create_cone_object(name, radius=radius, height=height, position=position, color=color)
+            elif collider_type == 'torus':
+                major_radius = obj_data.get('collider_data', {}).get('major_radius', 1.0)
+                minor_radius = obj_data.get('collider_data', {}).get('minor_radius', 0.3)
+                created_object = create_torus_object(name, major_radius=major_radius, minor_radius=minor_radius, position=position, color=color)
+        
+        # Если тип коллайдера не определен явно, пытаемся определить по имени
+        if not created_object:
+            if 'сфера' in name_lower or 'sphere' in name_lower:
+                created_object = create_sphere_object(name, radius=1.5, position=position, color=color)
+            elif 'куб' in name_lower or 'box' in name_lower or 'cube' in name_lower:
+                created_object = create_box_object(name, size=2.0, position=position, color=color)
+            elif 'цилиндр' in name_lower or 'cylinder' in name_lower:
+                created_object = create_cylinder_object(name, radius=1.0, height=2.0, position=position, color=color)
+            elif 'конус' in name_lower or 'cone' in name_lower:
+                created_object = create_cone_object(name, radius=1.0, height=2.0, position=position, color=color)
+            elif 'тор' in name_lower or 'torus' in name_lower:
+                created_object = create_torus_object(name, major_radius=1.5, minor_radius=0.5, position=position, color=color)
+        
+        # Если не удалось определить тип объекта, создаем обычный меш
+        if not created_object:
+            vertices = np.array(obj_data['vertices'])
+            faces = np.array(obj_data['faces'])
+            if self.add_mesh(name, vertices, faces, color, visible):
+                self._apply_object_properties(name, obj_data)
+                return True
+            return False
+        
+        # Добавляем созданный объект в сцену
+        created_object.create_view_item(self.viewport)
+        self.objects[name] = created_object
+        self.physics_engine.register_object(created_object)
+        self.object_manager.object_added.emit(name)
+        
+        # Применяем дополнительные свойства
+        self._apply_object_properties(name, obj_data)
+        
+        return True
 
     def _load_points_object(self, name: str, obj_data: dict) -> bool:
         """Загружает точки из данных"""
@@ -486,3 +544,28 @@ class SceneManager(QObject):
             self.profiling_stats.emit(profiling_stats)
 
             self.profiler = cProfile.Profile()
+
+    def set_object_position(self, name: str, position: tuple) -> bool:
+        """
+        Устанавливает позицию объекта
+        
+        Args:
+            name: Имя объекта
+            position: Новая позиция (x, y, z)
+            
+        Returns:
+            bool: True если позиция успешно обновлена
+        """
+        if name in self.objects:
+            # Обновляем позицию в объекте
+            self.objects[name].position = position
+            
+            # Обновляем визуальное представление
+            if self.viewport:
+                self.viewport.set_transform(name, position=position)
+                
+            # Отправляем сигнал об обновлении
+            self.object_updated.emit(name, {'transform': {'position': position}})
+            
+            return True
+        return False
