@@ -21,6 +21,7 @@ class Viewport3D(QWidget):
     object_selected = Signal(str)
     object_transformed = Signal(str, tuple)
     object_thrown = Signal(str, list)  # name, velocity
+    collider_request = Signal(str)  # name of object to get collider for
 
     def __init__(self, parent=None):
         """Инициализация вьюпорта"""
@@ -937,6 +938,9 @@ class Viewport3D(QWidget):
                     # Применяем только смещение
                     item.translate(*delta_position)
 
+                    # Запрашиваем обновление коллайдера
+                    self.collider_request.emit(name)
+
                 # Если нужно обновить все трансформации
                 else:
                     item.resetTransform()  # Сбрасываем только если меняем всё
@@ -965,6 +969,9 @@ class Viewport3D(QWidget):
                     # В конце перемещение
                     if position is not None:
                         item.translate(*position)
+
+                    # Запрашиваем обновление коллайдера после полной трансформации
+                    self.collider_request.emit(name)
 
                 # Принудительно обновляем вид
                 self.view.update()
@@ -1127,6 +1134,9 @@ class Viewport3D(QWidget):
             line.setVisible(True)
 
         elif collider_data['type'] == 'box' or collider_data['type'] == 2:  # CollisionType.BOX
+            # Получаем центр и размеры коллайдера
+            center = collider_data.get('center', (0, 0, 0))
+            
             # Если bounds не указаны, используем данные из 'data'
             if 'bounds' in collider_data:
                 bounds = collider_data['bounds']
@@ -1139,12 +1149,15 @@ class Viewport3D(QWidget):
                 bounds = [-half_size, -half_size, -half_size, half_size, half_size, half_size]
             
             vertices = []
-
-            # Создаем вершины куба
+            # Создаем вершины куба с учетом центра
             for x in [bounds[0], bounds[3]]:
                 for y in [bounds[1], bounds[4]]:
                     for z in [bounds[2], bounds[5]]:
-                        vertices.append([x, y, z])
+                        vertices.append([
+                            x + center[0],
+                            y + center[1],
+                            z + center[2]
+                        ])
 
             edges = [
                 (0, 1), (1, 3), (3, 2), (2, 0),  # Нижняя грань
